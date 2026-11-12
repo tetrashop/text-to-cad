@@ -53,14 +53,30 @@
         const btn = document.getElementById('genBtn');
         let base64Image = null;
 
+        // تابع فشرده‌سازی عکس برای جلوگیری از Timeout
         window.previewImage = function(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    document.getElementById('imagePreview').src = e.target.result;
-                    document.getElementById('imagePreview').style.display = 'block';
-                    // استخراج بخش Base64
-                    base64Image = e.target.result.split(',')[1];
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800; // کاهش سایز به ۸۰۰ پیکسل
+                        const scale = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scale;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        // فشرده‌سازی با کیفیت ۰.۷
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                        
+                        document.getElementById('imagePreview').src = compressedDataUrl;
+                        document.getElementById('imagePreview').style.display = 'block';
+                        base64Image = compressedDataUrl.split(',')[1];
+                    }
+                    img.src = e.target.result;
                 }
                 reader.readAsDataURL(input.files[0]);
             }
@@ -93,8 +109,8 @@
             
             if(mesh) scene.remove(mesh);
             btn.disabled = true;
-            btn.innerText = "در حال پردازش تصویر...";
-            statusDiv.innerText = "هوش مصنوعی در حال تحلیل نقشه (ممکن است ۳۰ ثانیه طول بکشد)...";
+            btn.innerText = "در حال پردازش...";
+            statusDiv.innerText = "لطفاً صبر کنید... (سرور ممکن است در حال بیدار شدن باشد)";
             statusDiv.style.color = "#ffcc00";
             
             try {
@@ -125,7 +141,7 @@
                     statusDiv.style.color = "#00ff00";
                 });
             } catch (e) {
-                statusDiv.innerText = "❌ " + e.message;
+                statusDiv.innerText = "❌ " + e.message + " (لطفا دوباره تلاش کنید)";
                 statusDiv.style.color = "#ff0000";
             } finally {
                 btn.disabled = false;
