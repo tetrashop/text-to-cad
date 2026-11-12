@@ -22,7 +22,6 @@ app.add_middleware(
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# مدل‌های بینا (Vision) رایگان و قدرتمند در OpenRouter
 VISION_MODELS = [
     "qwen/qwen-2-vl-7b-instruct:free",
     "openrouter/free" 
@@ -31,6 +30,7 @@ VISION_MODELS = [
 class PromptRequest(BaseModel):
     text: Optional[str] = None
     image_base64: Optional[str] = None
+    mode: Optional[str] = "mechanical" # حالت پیش‌فرض
 
 @app.get("/")
 def read_root():
@@ -41,17 +41,28 @@ def generate_from_text(req: PromptRequest):
     if not API_KEY:
         raise HTTPException(status_code=500, detail="API Key is missing.")
 
-    system_prompt = """
-    You are an expert Mechanical Engineer and OpenSCAD developer. 
-    Your task is to analyze the provided engineering drawing (image) or text description and convert it into valid OpenSCAD code.
-    Rules:
-    1. Carefully read dimensions, annotations, and views (front, top, side) in the image.
-    2. Output ONLY the OpenSCAD code. Do NOT wrap it in markdown code blocks. Do NOT output explanations.
-    3. Always use `$fn=100;` at the beginning for smooth curves.
-    4. Use `translate([x,y,z])` to position objects.
-    5. Use `difference()` for holes and `union()` for combining parts.
-    6. If the image is a 2D profile, use `linear_extrude()` or `rotate_extrude()`.
-    """
+    # 1. انتخاب پرامپت بر اساس حالت (مکانیک یا معماری)
+    if req.mode == "architectural":
+        system_prompt = """
+        You are an expert Architectural CAD modeler. Your task is to convert 2D floor plans into 3D OpenSCAD models.
+        IMPORTANT RULES FOR ARCHITECTURE:
+        1. Do NOT create a massive solid block and subtract rooms from it.
+        2. Create a base floor first using `cube()` or `square()`.
+        3. Create the walls as thin lines or rectangles and use `linear_extrude(height=30)` to raise them.
+        4. Leave the inside of the rooms EMPTY.
+        5. Keep the geometry simplified (e.g., outer bounding box and main interior dividing walls).
+        6. Output ONLY the OpenSCAD code. Do NOT wrap it in markdown. Use `$fn=100`.
+        """
+    else:
+        system_prompt = """
+        You are an expert Mechanical Engineer and OpenSCAD developer. 
+        Your task is to convert the provided engineering drawing or text into valid OpenSCAD code.
+        IMPORTANT RULES FOR MECHANICAL PARTS:
+        1. Use `translate([x,y,z])` to position objects.
+        2. Use `difference()` for holes and `union()` for combining solid parts.
+        3. Carefully read dimensions from the image.
+        4. Output ONLY the OpenSCAD code. Do NOT wrap it in markdown. Use `$fn=100`.
+        """
     
     # ساخت پیام برای هوش مصنوعی
     user_content = []
