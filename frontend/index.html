@@ -70,12 +70,12 @@
             if(mesh) scene.remove(mesh);
             btn.disabled = true;
             btn.innerText = "در حال پردازش...";
-            statusDiv.innerText = "در حال بیدار کردن سرور ابری و پردازش... (ممکن است ۳۰ ثانیه طول بکشد)";
+            statusDiv.innerText = "در حال بیدار کردن سرور ابری... (ممکن است ۳۰ تا ۵۰ ثانیه طول بکشد، لطفا صبر کنید)";
             statusDiv.style.color = "#ffcc00";
             
             try {
-                // ⚠️⚠️⚠️ این خط را با آدرس Render خودتان جایگزین کنید ⚠️⚠️⚠️
-                const response = await fetch('https://YOUR_RENDER_URL.onrender.com/generate', {
+                // آدرس دقیق Render شما
+                const response = await fetch('https://text-to-cad-c42s.onrender.com/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text })
@@ -112,9 +112,13 @@
                     statusDiv.style.color = "#00ff00";
                 });
             } catch (e) {
-                statusDiv.innerText = "❌ " + e.message;
-                statusDiv.style.color = "#ff0000";
                 console.error(e);
+                if (e.name === 'TypeError' && e.message.includes('Failed to fetch')) {
+                    statusDiv.innerText = "❌ خطا در اتصال: سرور Render در خواب است یا آدرس اشتباه است.";
+                } else {
+                    statusDiv.innerText = "❌ " + e.message;
+                }
+                statusDiv.style.color = "#ff0000";
             } finally {
                 btn.disabled = false;
                 btn.innerText = "ساخت مدل سه‌بعدی";
