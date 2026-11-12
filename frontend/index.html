@@ -10,10 +10,14 @@
         textarea { width: 85%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-family: inherit; resize: none; margin-bottom: 10px; font-size: 14px; }
         .file-upload { display: inline-block; padding: 8px 15px; cursor: pointer; background: #333; border-radius: 5px; margin-bottom: 10px; font-size: 14px; border: 1px dashed #555; }
         .file-upload input[type="file"] { display: none; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #00a86b; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
-        button:disabled { background: #555; cursor: not-allowed; }
+        .btn-group { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
+        #genBtn { background: #00a86b; }
+        #genBtn:disabled { background: #555; cursor: not-allowed; }
+        #downloadBtn { background: #007bff; display: none; text-decoration: none; }
+        #downloadBtn:hover { background: #0056b3; }
         #imagePreview { max-width: 100%; max-height: 100px; display: none; margin: 10px auto; border-radius: 5px; }
-        #canvas-container { width: 100vw; height: 55vh; position: relative; margin-top: 10px; }
+        #canvas-container { width: 100vw; height: 50vh; position: relative; margin-top: 10px; }
         #status { margin: 10px; font-size: 14px; color: #ffcc00; height: 40px; line-height: 1.5; }
     </style>
     <script type="importmap">
@@ -37,8 +41,12 @@
         <img id="imagePreview" src="" alt="Preview">
         
         <textarea id="prompt" placeholder="توضیحات تکمیلی (اختیاری)..."></textarea>
-        <br>
-        <button id="genBtn" onclick="generateModel()">تبدیل به مدل سه‌بعدی</button>
+        
+        <div class="btn-group">
+            <button id="genBtn" onclick="generateModel()">تبدیل به مدل سه‌بعدی</button>
+            <button id="downloadBtn" onclick="downloadSTL()">📥 دانلود STL</button>
+        </div>
+        
         <div id="status">آماده...</div>
     </div>
     <div id="canvas-container"></div>
@@ -51,8 +59,11 @@
         const container = document.getElementById('canvas-container');
         const statusDiv = document.getElementById('status');
         const btn = document.getElementById('genBtn');
+        const dlBtn = document.getElementById('downloadBtn');
         const RENDER_URL = 'https://text-to-cad-c42s.onrender.com';
+        
         let base64Image = null;
+        let currentSTLUrl = null; // ذخیره آدرس فایل STL برای دانلود
 
         window.previewImage = function(input) {
             if (input.files && input.files[0]) {
@@ -61,13 +72,13 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 600; // کاهش سایز بیشتر برای سرعت
+                        const MAX_WIDTH = 600;
                         const scale = MAX_WIDTH / img.width;
                         canvas.width = MAX_WIDTH;
                         canvas.height = img.height * scale;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6); // فشرده سازی بیشتر
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
                         document.getElementById('imagePreview').src = compressedDataUrl;
                         document.getElementById('imagePreview').style.display = 'block';
                         base64Image = compressedDataUrl.split(',')[1];
@@ -80,11 +91,11 @@
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x121212);
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.55), 0.1, 2000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.5), 0.1, 2000);
         camera.position.set(100, 100, 100);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight * 0.55);
+        renderer.setSize(window.innerWidth, window.innerHeight * 0.5);
         container.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -104,23 +115,18 @@
             
             if(mesh) scene.remove(mesh);
             btn.disabled = true;
+            dlBtn.style.display = 'none'; // مخفی کردن دکمه دانلود در شروع
             btn.innerText = "در حال پردازش...";
             
-            // 1. بیدار کردن سرور (Cold Start Mitigation)
             statusDiv.innerText = "⏳ مرحله ۱: در حال بیدار کردن سرور ابری... (حدود ۳۰ تا ۵۰ ثانیه صبر کنید)";
             statusDiv.style.color = "#ffcc00";
             
             try {
-                // ارسال یک درخواست ساده به روت برای بیدار کردن سرور
                 await fetch(RENDER_URL, { method: 'GET', mode: 'no-cors' });
-            } catch(e) {
-                // حتی اگر خطای شبکه داد، مهم نیست، سرور در حال بیدار شدن است
-            }
+            } catch(e) {}
             
-            // کمی صبر می‌کنیم تا سرور کامل بالا بیاید
             await new Promise(r => setTimeout(r, 2000));
             
-            // 2. ارسال درخواست اصلی
             statusDiv.innerText = "🧠 مرحله ۲: هوش مصنوعی در حال تحلیل نقشه و تولید کد...";
             
             try {
@@ -134,9 +140,13 @@
                 
                 statusDiv.innerText = "📥 مرحله ۳: دانلود و رندر مدل...";
                 const blob = await response.blob();
-                const loader = new STLLoader();
                 
-                loader.load(URL.createObjectURL(blob), function (geometry) {
+                // ذخیره فایل برای دانلود
+                if (currentSTLUrl) URL.revokeObjectURL(currentSTLUrl);
+                currentSTLUrl = URL.createObjectURL(blob);
+                
+                const loader = new STLLoader();
+                loader.load(currentSTLUrl, function (geometry) {
                     geometry.center();
                     geometry.computeBoundingSphere();
                     const radius = geometry.boundingSphere.radius;
@@ -145,17 +155,30 @@
                     const material = new THREE.MeshPhongMaterial({ color: 0x00a86b, shininess: 80 });
                     mesh = new THREE.Mesh(geometry, material);
                     scene.add(mesh);
+                    
                     statusDiv.innerText = "✅ مدل سه‌بعدی با موفقیت بازسازی شد!";
                     statusDiv.style.color = "#00ff00";
+                    dlBtn.style.display = 'block'; // نمایش دکمه دانلود
                 });
             } catch (e) {
-                statusDiv.innerText = "❌ " + e.message + " (ممکن است سرور هنوز بیدار نشده باشد. لطفا دوباره تلاش کنید)";
+                statusDiv.innerText = "❌ " + e.message + " (لطفا دوباره تلاش کنید)";
                 statusDiv.style.color = "#ff0000";
             } finally {
                 btn.disabled = false;
                 btn.innerText = "تبدیل به مدل سه‌بعدی";
                 animate();
             }
+        }
+
+        // تابع دانلود فایل
+        window.downloadSTL = function() {
+            if (!currentSTLUrl) return;
+            const a = document.createElement('a');
+            a.href = currentSTLUrl;
+            a.download = 'Text-to-CAD-Model.stl';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
 
         function animate() {
