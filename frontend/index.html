@@ -74,11 +74,8 @@
             statusDiv.style.color = "#ffcc00";
             
             try {
-                const response = await fetch('/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text })
-                });
+                // آدرس شما باید شبیه این باشد:
+const response = await fetch('https://text-to-cad-backend.onrender.com/generate', { ... });
                 
                 if (!response.ok) {
     const errText = await response.text();
