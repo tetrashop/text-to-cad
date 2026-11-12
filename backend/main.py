@@ -11,6 +11,7 @@ import re
 
 app = FastAPI(title="Text-to-CAD Pro Vision Engine")
 
+# فعال‌سازی CORS برای ارتباط Vercel و Render
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -19,9 +20,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# دریافت کلید API از متغیرهای محیطی Render
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# مدل‌های بینا (Vision) با سیستم Fallback
 VISION_MODELS = [
     "qwen/qwen-2-vl-7b-instruct:free",
     "openrouter/free" 
@@ -30,28 +33,27 @@ VISION_MODELS = [
 class PromptRequest(BaseModel):
     text: Optional[str] = None
     image_base64: Optional[str] = None
-    mode: Optional[str] = "mechanical" # حالت پیش‌فرض
+    mode: Optional[str] = "mechanical" # حالت پیش‌فرض: mechanical یا architectural
 
 @app.get("/")
 def read_root():
-    return {"status": "Text-to-CAD Vision Backend is running!"}
+    return {"status": "Text-to-CAD Vision Backend is running perfectly!"}
 
 @app.post("/generate")
 def generate_from_text(req: PromptRequest):
     if not API_KEY:
-        raise HTTPException(status_code=500, detail="API Key is missing.")
+        raise HTTPException(status_code=500, detail="API Key is missing in environment variables.")
 
-    # 1. انتخاب پرامپت بر اساس حالت (مکانیک یا معماری)
+    # 1. تفکیک پرامپت‌ها بر اساس حالت (مکانیک یا معماری)
     if req.mode == "architectural":
         system_prompt = """
         You are an expert Architectural CAD modeler. Your task is to convert 2D floor plans into 3D OpenSCAD models.
         IMPORTANT RULES FOR ARCHITECTURE:
-        1. Do NOT create a massive solid block and subtract rooms from it.
-        2. Create a base floor first using `cube()` or `square()`.
-        3. Create the walls as thin lines or rectangles and use `linear_extrude(height=30)` to raise them.
-        4. Leave the inside of the rooms EMPTY.
-        5. Keep the geometry simplified (e.g., outer bounding box and main interior dividing walls).
-        6. Output ONLY the OpenSCAD code. Do NOT wrap it in markdown. Use `$fn=100`.
+        1. Create a base floor first using `cube()` or `square()`.
+        2. Create the walls as thin lines or rectangles and use `linear_extrude(height=30)` to raise them.
+        3. Leave the inside of the rooms EMPTY.
+        4. **DOORS AND WINDOWS:** For doorways, you MUST use `difference()` to subtract a `cube([width, wall_thickness, height])` from the extruded walls.
+        5. Output ONLY the OpenSCAD code. Do NOT wrap it in markdown. Use `$fn=100`.
         """
     else:
         system_prompt = """
@@ -85,6 +87,7 @@ def generate_from_text(req: PromptRequest):
     
     last_error = ""
     
+    # سیستم Fallback برای مدل‌های هوش مصنوعی
     for model_name in VISION_MODELS:
         try:
             headers = {
@@ -121,6 +124,7 @@ def generate_from_text(req: PromptRequest):
             with open(scad_path, "w") as f:
                 f.write(scad_code)
                 
+            # اجرای موتور OpenSCAD (نسخه Headless که در Docker نصب شده)
             process = subprocess.run(["openscad-headless", "-o", stl_path, scad_path], capture_output=True, text=True)
             
             if process.returncode != 0:

@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# نصب پیش‌نیازهای سیستمی OpenSCAD (headless)
+# نصب OpenSCAD و پیش‌نیازهای گرافیکی مجازی (Xvfb) برای اجرای Headless
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openscad \
     xvfb \
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ساخت یک اسکریپت کمکی برای اجرای OpenSCAD به‌صورت headless
+# ساخت یک اسکریپت کمکی برای اینکه OpenSCAD بدون نیاز به نمایشگر فیزیکی اجرا شود
 RUN printf '%s\n' \
     '#!/usr/bin/env sh' \
     'set -eu' \
@@ -28,5 +28,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# اجرای برنامه (Render از متغیر PORT استفاده می‌کند)
+# Render از متغیر PORT استفاده می‌کند
 CMD uvicorn main:app --host 0.0.0.0 --port $PORT

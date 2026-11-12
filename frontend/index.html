@@ -40,7 +40,6 @@
         <br>
         <img id="imagePreview" src="" alt="Preview">
         
-        <!-- منوی انتخاب نوع نقشه -->
         <select id="cadMode">
             <option value="mechanical">🔩 قطعه مکانیکی (مکانیک)</option>
             <option value="architectural">🏠 پلان ساختمانی (معماری)</option>
@@ -68,6 +67,8 @@
         const btn = document.getElementById('genBtn');
         const dlBtn = document.getElementById('downloadBtn');
         const modeSelect = document.getElementById('cadMode');
+        
+        // ⚠️ آدرس بک‌اند Render خود را اینجا وارد کنید
         const RENDER_URL = 'https://text-to-cad-c42s.onrender.com';
         
         let base64Image = null;
@@ -80,7 +81,7 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 600;
+                        const MAX_WIDTH = 600; // کاهش سایز برای جلوگیری از Timeout
                         const scale = MAX_WIDTH / img.width;
                         canvas.width = MAX_WIDTH;
                         canvas.height = img.height * scale;
@@ -119,7 +120,7 @@
 
         window.generateModel = async function() {
             const text = document.getElementById('prompt').value.trim();
-            const mode = modeSelect.value; // دریافت حالت انتخاب شده
+            const mode = modeSelect.value;
             
             if(!text && !base64Image) { alert("لطفاً یک عکس آپلود کنید یا توضیحات بنویسید."); return; }
             
@@ -128,9 +129,10 @@
             dlBtn.style.display = 'none';
             btn.innerText = "در حال پردازش...";
             
-            statusDiv.innerText = "⏳ مرحله ۱: در حال بیدار کردن سرور ابری...";
+            statusDiv.innerText = "⏳ مرحله ۱: در حال بیدار کردن سرور ابری... (ممکن است ۳۰ ثانیه طول بکشد)";
             statusDiv.style.color = "#ffcc00";
             
+            // درخواست Ping برای بیدار کردن سرور رایگان Render
             try {
                 await fetch(RENDER_URL, { method: 'GET', mode: 'no-cors' });
             } catch(e) {}
@@ -143,7 +145,6 @@
                 const response = await fetch(`${RENDER_URL}/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    // ارسال حالت به بک‌اند
                     body: JSON.stringify({ text: text, image_base64: base64Image, mode: mode })
                 });
                 
