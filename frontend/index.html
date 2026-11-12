@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text-to-CAD AI</title>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #121212; color: white; text-align: center; margin: 0; padding: 0; overflow: hidden; }
+        .header { background: #1e1e1e; padding: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        textarea { width: 85%; height: 70px; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-family: inherit; resize: none; margin-bottom: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #00a86b; color: white; border: none; border-radius: 5px; font-weight: bold; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        button:active:not(:disabled) { background: #008f5a; }
+        #canvas-container { width: 100vw; height: 65vh; position: relative; margin-top: 10px; }
+        #status { margin: 5px; font-size: 14px; color: #ffcc00; height: 20px; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h3>دستیار هوشمند Text-to-CAD</h3>
+        <textarea id="prompt" placeholder="مثلا: یک مکعب ۵۰ در ۵۰ در ۱۰ بساز و یک سوراخ به شعاع ۱۰ در وسط آن ایجاد کن..."></textarea>
+        <br>
+        <button id="genBtn" onclick="generateModel()">ساخت مدل سه‌بعدی</button>
+        <div id="status">آماده...</div>
+    </div>
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+        const container = document.getElementById('canvas-container');
+        const statusDiv = document.getElementById('status');
+        const btn = document.getElementById('genBtn');
+        
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x121212);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.65), 0.1, 2000);
+        camera.position.set(100, 100, 100);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight * 0.65);
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        
+        const light1 = new THREE.DirectionalLight(0xffffff, 2);
+        light1.position.set(50, 100, 50);
+        scene.add(light1);
+        const light2 = new THREE.DirectionalLight(0xffffff, 1);
+        light2.position.set(-50, -100, -50);
+        scene.add(light2);
+        scene.add(new THREE.AmbientLight(0x606060));
+
+        let mesh = null;
+
+        window.generateModel = async function() {
+            const text = document.getElementById('prompt').value.trim();
+            if(!text) { alert("لطفاً ابتدا توضیحات قطعه را بنویسید."); return; }
+            
+            if(mesh) scene.remove(mesh);
+            btn.disabled = true;
+            btn.innerText = "در حال پردازش...";
+            statusDiv.innerText = "هوش مصنوعی در حال نوشتن کد...";
+            statusDiv.style.color = "#ffcc00";
+            
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                if (!response.ok) {
+    const errText = await response.text();
+    let errMessage = "خطای ناشناخته سرور";
+    try {
+        // تلاش برای خواندن خطا به صورت JSON
+        const errJson = JSON.parse(errText);
+        errMessage = errJson.detail || errMessage;
+    } catch (parseError) {
+        // اگر JSON نبود، متن خام را نشان بده
+        errMessage = errText.substring(0, 100); 
+    }
+    throw new Error(errMessage);
+}
+                
+                statusDiv.innerText = "دانلود و رندر مدل...";
+                const blob = await response.blob();
+                const loader = new STLLoader();
+                
+                loader.load(URL.createObjectURL(blob), function (geometry) {
+                    geometry.center();
+                    // محاسبه خودکار فاصله دوربین بر اساس اندازه قطعه
+                    geometry.computeBoundingSphere();
+                    const radius = geometry.boundingSphere.radius;
+                    camera.position.set(radius*2, radius*2, radius*2);
+                    controls.update();
+
+                    const material = new THREE.MeshPhongMaterial({ color: 0x00a86b, shininess: 80 });
+                    mesh = new THREE.Mesh(geometry, material);
+                    scene.add(mesh);
+                    
+                    statusDiv.innerText = "✅ مدل با موفقیت ساخته شد!";
+                    statusDiv.style.color = "#00ff00";
+                });
+            } catch (e) {
+                statusDiv.innerText = "❌ " + e.message;
+                statusDiv.style.color = "#ff0000";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "ساخت مدل سه‌بعدی";
+                animate();
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

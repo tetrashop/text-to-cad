@@ -1,0 +1,8 @@
+venv/
+temp_files/
+__pycache__/
+*.pyc
+*.stl
+*.scad
+.env
+backend/.env
