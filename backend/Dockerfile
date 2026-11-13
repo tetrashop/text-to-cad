@@ -1,15 +1,16 @@
 FROM python:3.11-slim
 
-# نصب OpenSCAD و پیش‌نیازهای گرافیکی مجازی (Xvfb) برای اجرای Headless
+# 1. نصب OpenSCAD و پیش‌نیازهای گرافیکی مجازی برای معماری
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openscad \
     xvfb \
     xauth \
     libgl1 \
+    libglib2.0-0 \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ساخت یک اسکریپت کمکی برای اینکه OpenSCAD بدون نیاز به نمایشگر فیزیکی اجرا شود
+# ساخت اسکریپت کمکی Headless
 RUN printf '%s\n' \
     '#!/usr/bin/env sh' \
     'set -eu' \
@@ -23,10 +24,10 @@ RUN printf '%s\n' \
 
 WORKDIR /app
 
+# 2. نصب کتابخانه‌های پایتون (اضافه شدن CadQuery)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Render از متغیر PORT استفاده می‌کند
 CMD uvicorn main:app --host 0.0.0.0 --port $PORT
