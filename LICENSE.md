@@ -1,10 +1,3 @@
-
----
-
-### 📄 فایل دوم: `LICENSE.md`
-این متن استاندارد (MIT License) را کپی کنید و در فایلی به نام `LICENSE.md` در همان مسیر (روت پروژه) ذخیره کنید:
-
-```markdown
 MIT License
 
 Copyright (c) 2026 Amin Edjlal
