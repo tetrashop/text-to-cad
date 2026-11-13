@@ -14,7 +14,7 @@ app = FastAPI(title="Text-to-CAD Pro Vision Engine")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
-    allow_credentials=False, # اصلاح شد تا خطای CORS رفع شود
+    allow_credentials=False, 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -77,51 +77,50 @@ def generate_from_text(req: PromptRequest):
     last_error = ""
     
     for model_name in VISION_MODELS:
-        for attempt in range(3): # سیستم خودترمیم
-            try:
-                headers = {
-                    "Authorization": f"Bearer {API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://text-to-cad.vercel.app",
-                    "X-Title": "Text-to-CAD Pro"
-                }
-                payload = {"model": model_name, "messages": messages, "temperature": 0.1}
-                
-                response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-                
-                if response.status_code in [404, 429, 403, 502]:
-                    last_error = f"Model {model_name} unavailable."
-                    break 
-                    
-                if response.status_code != 200:
-                    raise Exception("API Error")
-                    
-                ai_reply = response.json()['choices'][0]['message']['content']
-                scad_code = re.sub(r'```(?:openscad)?\n?(.*?)```', r'\1', ai_reply, flags=re.DOTALL).strip()
-                
-                if not scad_code:
-                    raise Exception("Empty code.")
-
-                file_id = str(uuid.uuid4())
-                scad_path = f"/tmp/{file_id}.scad"
-                stl_path = f"/tmp/{file_id}.stl"
-                
-                with open(scad_path, "w") as f:
-                    f.write(scad_code)
-                    
-                process = subprocess.run(["openscad-headless", "-o", stl_path, scad_path], capture_output=True, text=True)
-                
-                if process.returncode != 0:
-                    raise Exception(process.stderr)
-                
-                return FileResponse(stl_path, media_type="application/octet-stream", filename="model.stl")
-
-            except Exception as e:
-                last_error = str(e)
-                if 'ai_reply' in locals() and ai_reply:
-                    messages.append({"role": "assistant", "content": ai_reply})
-                    messages.append({"role": "user", "content": f"Your OpenSCAD code failed: {last_error}. Please fix it."})
-                else:
-                    break
+        # کاهش تلاش‌ها به 1 بار برای جلوگیری از Timeout سرور رایگان
+        try:
+            headers = {
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://text-to-cad.vercel.app",
+                "X-Title": "Text-to-CAD Pro"
+            }
+            payload = {"model": model_name, "messages": messages, "temperature": 0.1}
             
-    raise HTTPException(status_code=500, detail=f"Failed. Error: {last_error}")
+            # کاهش زمان انتظار برای پاسخ هوش مصنوعی به 40 ثانیه
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=40)
+            
+            if response.status_code in [404, 429, 403, 502]:
+                last_error = f"Model {model_name} unavailable."
+                continue 
+                
+            if response.status_code != 200:
+                raise Exception(f"AI API Error: {response.status_code}")
+                
+            ai_reply = response.json()['choices'][0]['message']['content']
+            scad_code = re.sub(r'```(?:openscad)?\n?(.*?)```', r'\1', ai_reply, flags=re.DOTALL).strip()
+            
+            if not scad_code:
+                raise Exception("AI returned empty code.")
+
+            file_id = str(uuid.uuid4())
+            scad_path = f"/tmp/{file_id}.scad"
+            stl_path = f"/tmp/{file_id}.stl"
+            
+            with open(scad_path, "w") as f:
+                f.write(scad_code)
+                
+            process = subprocess.run(["openscad-headless", "-o", stl_path, scad_path], capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                raise Exception("OpenSCAD rendering failed. The AI generated invalid geometry.")
+            
+            return FileResponse(stl_path, media_type="application/octet-stream", filename="model.stl")
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"Error: {last_error}")
+            continue
+            
+    # اگر همه مدل‌ها خطا دادند، پیام دقیق برمی‌گردانیم
+    raise HTTPException(status_code=500, detail=f"Generation failed: {last_error}")
