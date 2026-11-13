@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text-to-CAD Vision Pro</title>
+    <title>Text-to-CAD Pro Vision</title>
     <style>
         body { font-family: Tahoma, sans-serif; background: #121212; color: white; text-align: center; margin: 0; padding: 0; overflow: hidden; }
-        .header { background: #1e1e1e; padding: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-        textarea { width: 85%; height: 50px; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-family: inherit; resize: none; margin-bottom: 10px; font-size: 14px; }
+        .header { background: #1e1e1e; padding: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; position: relative;}
+        textarea { width: 85%; height: 45px; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-family: inherit; resize: none; margin-bottom: 10px; font-size: 14px; }
         .file-upload { display: inline-block; padding: 8px 15px; cursor: pointer; background: #333; border-radius: 5px; margin-bottom: 10px; font-size: 14px; border: 1px dashed #555; }
         .file-upload input[type="file"] { display: none; }
         select { padding: 8px; border-radius: 5px; background: #333; color: white; border: 1px solid #555; margin-bottom: 10px; width: 80%; font-family: inherit;}
-        .btn-group { display: flex; justify-content: center; gap: 10px; margin-top: 5px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
-        #genBtn { background: #00a86b; }
+        .btn-group { display: flex; justify-content: center; gap: 5px; margin-top: 5px; flex-wrap: wrap;}
+        button { padding: 8px 15px; font-size: 14px; cursor: pointer; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
+        #genBtn { background: #00a86b; flex-grow: 1; }
         #genBtn:disabled { background: #555; cursor: not-allowed; }
-        #downloadBtn { background: #007bff; display: none; text-decoration: none; }
+        .tool-btn { background: #444; padding: 8px; }
+        .tool-btn.active { background: #007bff; }
         #imagePreview { max-width: 100%; max-height: 80px; display: none; margin: 5px auto; border-radius: 5px; }
-        #canvas-container { width: 100vw; height: 45vh; position: relative; margin-top: 10px; }
-        #status { margin: 10px; font-size: 14px; color: #ffcc00; height: 40px; line-height: 1.5; }
+        #canvas-container { width: 100vw; height: 55vh; position: relative; }
+        #status { margin: 5px; font-size: 13px; color: #ffcc00; height: 20px; }
     </style>
     <script type="importmap">
       {
@@ -31,26 +32,27 @@
 </head>
 <body>
     <div class="header">
-        <h3 style="margin-top:0;">دستیار مهندسی Text-to-CAD Pro</h3>
+        <h3 style="margin-top:0; font-size: 18px;">دستیار مهندسی Text-to-CAD Pro</h3>
         
         <label class="file-upload">
             📷 آپلود نقشه (عکس)
             <input type="file" id="imageInput" accept="image/*" onchange="previewImage(this)">
         </label>
-        <br>
         <img id="imagePreview" src="" alt="Preview">
         
         <select id="cadMode">
             <option value="mechanical">🔩 قطعه مکانیکی (مکانیک)</option>
             <option value="architectural">🏠 پلان ساختمانی (معماری)</option>
         </select>
-        <br>
         
         <textarea id="prompt" placeholder="توضیحات تکمیلی (اختیاری)..."></textarea>
         
         <div class="btn-group">
-            <button id="genBtn" onclick="generateModel()">تبدیل به مدل سه‌بعدی</button>
-            <button id="downloadBtn" onclick="downloadSTL()">📥 دانلود STL</button>
+            <button id="genBtn" onclick="generateModel()">تبدیل به مدل</button>
+            <button class="tool-btn" id="gridBtn" onclick="toggleGrid()">Grid</button>
+            <button class="tool-btn" id="wireBtn" onclick="toggleWireframe()">Wireframe</button>
+            <button class="tool-btn" onclick="downloadSTL()">📥 STL</button>
+            <button class="tool-btn" onclick="takeSnapshot()">📸</button>
         </div>
         
         <div id="status">آماده...</div>
@@ -65,14 +67,12 @@
         const container = document.getElementById('canvas-container');
         const statusDiv = document.getElementById('status');
         const btn = document.getElementById('genBtn');
-        const dlBtn = document.getElementById('downloadBtn');
-        const modeSelect = document.getElementById('cadMode');
-        
-        // ⚠️ آدرس بک‌اند Render خود را اینجا وارد کنید
         const RENDER_URL = 'https://text-to-cad-c42s.onrender.com';
         
         let base64Image = null;
         let currentSTLUrl = null;
+        let isWireframe = false;
+        let gridHelper = null;
 
         window.previewImage = function(input) {
             if (input.files && input.files[0]) {
@@ -81,7 +81,7 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 600; // کاهش سایز برای جلوگیری از Timeout
+                        const MAX_WIDTH = 600;
                         const scale = MAX_WIDTH / img.width;
                         canvas.width = MAX_WIDTH;
                         canvas.height = img.height * scale;
@@ -98,48 +98,66 @@
             }
         }
 
+        // --- تنظیمات Three.js ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x121212);
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.45), 0.1, 2000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.55), 0.1, 2000);
         camera.position.set(100, 100, 100);
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight * 0.45);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight * 0.55);
         container.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        const light1 = new THREE.DirectionalLight(0xffffff, 2);
-        light1.position.set(50, 100, 50);
-        scene.add(light1);
-        const light2 = new THREE.DirectionalLight(0xffffff, 1);
-        light2.position.set(-50, -100, -50);
-        scene.add(light2);
-        scene.add(new THREE.AmbientLight(0x606060));
+        
+        // نورپردازی بهبود یافته
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(100, 100, 50);
+        scene.add(dirLight);
+        const fillLight = new THREE.DirectionalLight(0x00a86b, 0.5);
+        fillLight.position.set(-100, 0, -50);
+        scene.add(fillLight);
+
+        // اضافه کردن شبکه (Grid)
+        gridHelper = new THREE.GridHelper(200, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -0.1;
+        scene.add(gridHelper);
 
         let mesh = null;
 
+        window.toggleGrid = function() {
+            gridHelper.visible = !gridHelper.visible;
+            document.getElementById('gridBtn').classList.toggle('active');
+        }
+
+        window.toggleWireframe = function() {
+            if(mesh) {
+                isWireframe = !isWireframe;
+                mesh.material.wireframe = isWireframe;
+                document.getElementById('wireBtn').classList.toggle('active');
+            }
+        }
+
         window.generateModel = async function() {
             const text = document.getElementById('prompt').value.trim();
-            const mode = modeSelect.value;
+            const mode = document.getElementById('cadMode').value;
             
             if(!text && !base64Image) { alert("لطفاً یک عکس آپلود کنید یا توضیحات بنویسید."); return; }
             
             if(mesh) scene.remove(mesh);
             btn.disabled = true;
-            dlBtn.style.display = 'none';
             btn.innerText = "در حال پردازش...";
-            
-            statusDiv.innerText = "⏳ مرحله ۱: در حال بیدار کردن سرور ابری... (ممکن است ۳۰ ثانیه طول بکشد)";
+            statusDiv.innerText = "⏳ بیدار کردن سرور ابری (ممکن است ۳۰ ثانیه طول بکشد)...";
             statusDiv.style.color = "#ffcc00";
             
-            // درخواست Ping برای بیدار کردن سرور رایگان Render
             try {
                 await fetch(RENDER_URL, { method: 'GET', mode: 'no-cors' });
             } catch(e) {}
             
             await new Promise(r => setTimeout(r, 2000));
             
-            statusDiv.innerText = "🧠 مرحله ۲: هوش مصنوعی در حال تحلیل (حالت: " + (mode === 'architectural' ? 'معماری' : 'مکانیک') + ")...";
+            statusDiv.innerText = "🧠 هوش مصنوعی در حال تحلیل و تولید کد...";
             
             try {
                 const response = await fetch(`${RENDER_URL}/generate`, {
@@ -148,9 +166,9 @@
                     body: JSON.stringify({ text: text, image_base64: base64Image, mode: mode })
                 });
                 
-                if (!response.ok) throw new Error("خطا در پردازش سرور");
+                if (!response.ok) throw new Error("خطا در پردازش سرور. لطفا دوباره تلاش کنید.");
                 
-                statusDiv.innerText = "📥 مرحله ۳: دانلود و رندر مدل...";
+                statusDiv.innerText = "📥 دانلود و رندر مدل...";
                 const blob = await response.blob();
                 
                 if (currentSTLUrl) URL.revokeObjectURL(currentSTLUrl);
@@ -163,32 +181,46 @@
                     const radius = geometry.boundingSphere.radius;
                     camera.position.set(radius*2, radius*2, radius*2);
                     controls.update();
-                    const material = new THREE.MeshPhongMaterial({ color: 0x00a86b, shininess: 80 });
+                    
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: 0x00a86b, 
+                        shininess: 80,
+                        wireframe: isWireframe
+                    });
                     mesh = new THREE.Mesh(geometry, material);
                     scene.add(mesh);
                     
-                    statusDiv.innerText = "✅ مدل سه‌بعدی با موفقیت بازسازی شد!";
+                    statusDiv.innerText = "✅ مدل سه‌بعدی با موفقیت ساخته شد!";
                     statusDiv.style.color = "#00ff00";
-                    dlBtn.style.display = 'block';
                 });
             } catch (e) {
-                statusDiv.innerText = "❌ " + e.message + " (لطفا دوباره تلاش کنید)";
+                statusDiv.innerText = "❌ " + e.message;
                 statusDiv.style.color = "#ff0000";
             } finally {
                 btn.disabled = false;
-                btn.innerText = "تبدیل به مدل سه‌بعدی";
+                btn.innerText = "تبدیل به مدل";
                 animate();
             }
         }
 
         window.downloadSTL = function() {
-            if (!currentSTLUrl) return;
+            if (!currentSTLUrl) return alert("ابتدا یک مدل بسازید!");
             const a = document.createElement('a');
             a.href = currentSTLUrl;
             a.download = 'Text-to-CAD-Model.stl';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+        }
+
+        window.takeSnapshot = function() {
+            if (!mesh) return alert("ابتدا یک مدل بسازید!");
+            renderer.render(scene, camera);
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataURL;
+            a.download = 'CAD-Snapshot.png';
+            a.click();
         }
 
         function animate() {
