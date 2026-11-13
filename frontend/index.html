@@ -33,20 +33,20 @@
 <body>
     <div class="header">
         <h3 style="margin-top:0; font-size: 18px;">دستیار مهندسی Text-to-CAD Pro</h3>
-        
+
         <label class="file-upload">
             📷 آپلود نقشه (عکس)
             <input type="file" id="imageInput" accept="image/*" onchange="previewImage(this)">
         </label>
         <img id="imagePreview" src="" alt="Preview">
-        
+
         <select id="cadMode">
             <option value="mechanical">🔩 قطعه مکانیکی (مکانیک)</option>
             <option value="architectural">🏠 پلان ساختمانی (معماری)</option>
         </select>
-        
+
         <textarea id="prompt" placeholder="توضیحات تکمیلی (اختیاری)..."></textarea>
-        
+
         <div class="btn-group">
             <button id="genBtn" onclick="generateModel()">تبدیل به مدل</button>
             <button class="tool-btn" id="gridBtn" onclick="toggleGrid()">Grid</button>
@@ -54,7 +54,7 @@
             <button class="tool-btn" onclick="downloadSTL()">📥 STL</button>
             <button class="tool-btn" onclick="takeSnapshot()">📸</button>
         </div>
-        
+
         <div id="status">آماده...</div>
     </div>
     <div id="canvas-container"></div>
@@ -68,7 +68,7 @@
         const statusDiv = document.getElementById('status');
         const btn = document.getElementById('genBtn');
         const RENDER_URL = 'https://text-to-cad-c42s.onrender.com';
-        
+
         let base64Image = null;
         let currentSTLUrl = null;
         let isWireframe = false;
@@ -103,14 +103,14 @@
         scene.background = new THREE.Color(0x121212);
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.55), 0.1, 2000);
         camera.position.set(100, 100, 100);
-        
+
         const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
         renderer.setSize(window.innerWidth, window.innerHeight * 0.55);
         container.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        
-        // نورپردازی بهبود یافته
+
+        // نورپردازی
         scene.add(new THREE.AmbientLight(0xffffff, 0.6));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(100, 100, 50);
@@ -142,56 +142,64 @@
         window.generateModel = async function() {
             const text = document.getElementById('prompt').value.trim();
             const mode = document.getElementById('cadMode').value;
-            
+
             if(!text && !base64Image) { alert("لطفاً یک عکس آپلود کنید یا توضیحات بنویسید."); return; }
-            
+
             if(mesh) scene.remove(mesh);
             btn.disabled = true;
             btn.innerText = "در حال پردازش...";
-            statusDiv.innerText = "⏳ بیدار کردن سرور ابری (ممکن است ۳۰ ثانیه طول بکشد)...";
+            statusDiv.innerText = "⏳ بیدار کردن سرور ابری...";
             statusDiv.style.color = "#ffcc00";
-            
+
             try {
                 await fetch(RENDER_URL, { method: 'GET', mode: 'no-cors' });
             } catch(e) {}
-            
+
             await new Promise(r => setTimeout(r, 2000));
-            
+
             statusDiv.innerText = "🧠 هوش مصنوعی در حال تحلیل و تولید کد...";
-            
+
             try {
                 const response = await fetch(`${RENDER_URL}/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text, image_base64: base64Image, mode: mode })
                 });
-                
+
                 if (!response.ok) throw new Error("خطا در پردازش سرور. لطفا دوباره تلاش کنید.");
-                
+
                 statusDiv.innerText = "📥 دانلود و رندر مدل...";
                 const blob = await response.blob();
-                
+
                 if (currentSTLUrl) URL.revokeObjectURL(currentSTLUrl);
                 currentSTLUrl = URL.createObjectURL(blob);
-                
+
                 const loader = new STLLoader();
                 loader.load(currentSTLUrl, function (geometry) {
                     geometry.center();
                     geometry.computeBoundingSphere();
-                    const radius = geometry.boundingSphere.radius;
+                    
+                    // بررسی امنیتی: اگر مدل خالی باشد، دوربین را خراب نکن
+                    let radius = geometry.boundingSphere ? geometry.boundingSphere.radius : 50;
+                    if (!radius || isNaN(radius) || radius === Infinity) {
+                        radius = 50;
+                        statusDiv.innerText = "⚠️ مدل تولید شده خالی یا نامعتبر است. لطفاً توضیحات دقیق‌تری بنویسید.";
+                        statusDiv.style.color = "#ffcc00";
+                    } else {
+                        statusDiv.innerText = "✅ مدل سه‌بعدی با موفقیت ساخته شد!";
+                        statusDiv.style.color = "#00ff00";
+                    }
+
                     camera.position.set(radius*2, radius*2, radius*2);
                     controls.update();
-                    
-                    const material = new THREE.MeshPhongMaterial({ 
-                        color: 0x00a86b, 
+
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0x00a86b,
                         shininess: 80,
                         wireframe: isWireframe
                     });
                     mesh = new THREE.Mesh(geometry, material);
                     scene.add(mesh);
-                    
-                    statusDiv.innerText = "✅ مدل سه‌بعدی با موفقیت ساخته شد!";
-                    statusDiv.style.color = "#00ff00";
                 });
             } catch (e) {
                 statusDiv.innerText = "❌ " + e.message;
