@@ -14,7 +14,7 @@ app = FastAPI(title="Text-to-CAD Pro Dual Engine")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
-    allow_credentials=True,
+    allow_credentials=False,  # <--- این خط باید False شود
     allow_methods=["*"],
     allow_headers=["*"],
 )
