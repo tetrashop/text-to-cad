@@ -2,4 +2,3 @@ fastapi
 uvicorn
 requests
 pydantic
-cadquery==2.4.0
